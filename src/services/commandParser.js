@@ -1,4 +1,7 @@
 export const COMMAND_INTENTS = {
+  CONVERSATION: 'CONVERSATION',
+  QUESTION: 'QUESTION',
+  MEMORY: 'MEMORY',
   TASK_CREATE: 'CREATE_TASK',
   LEAD_CREATE: 'CREATE_LEAD',
   CONTENT_CREATE: 'CREATE_CONTENT',
@@ -84,6 +87,26 @@ const CONTENT_CATEGORY_PATTERNS = [
 
 function matchesAny(text, patterns) {
   return patterns.some((pattern) => pattern.test(text))
+}
+
+function getWordCount(text = '') {
+  return text.trim().split(/\s+/).filter(Boolean).length
+}
+
+function isShortConversation(message) {
+  return getWordCount(message) < 3
+    && /^(oke|ok|baik|sip|siap|tidak|nggak|enggak|ga|gak|lanjut|mantap|ya|iya|boleh|bisa|thanks|makasih|terima kasih)\b/i.test(message.trim())
+}
+
+function isQuestion(message) {
+  return /[?？]\s*$/.test(message)
+    || /^(apa|siapa|kapan|dimana|di mana|kenapa|mengapa|bagaimana|berapa|bisa|tolong jelaskan)\b/i.test(message.trim())
+}
+
+function isMemoryIntent(message) {
+  return /\b(ingat|simpan|catat|perlu diingat|jangan lupa)\b/i.test(message)
+    && !/^\s*(ingat|simpan|catat|tolong ingat|ingat ini)\s+(oke|ok|baik|sip|siap|tidak|mantap|lanjut)\.?$/i.test(message.trim())
+    && /\b(goal|tujuan|target|project|proyek|keputusan|diputuskan|task|tugas|lead|prospek|client|klien|follow\s*up|insight|pelajaran|catatan penting|branding|automation|saas|controlhub|nexus|konten|content|instagram|preferensi|suka|tidak suka)\b/i.test(message)
 }
 
 function capitalizeTitle(title) {
@@ -307,8 +330,38 @@ export function parseCommand(message) {
 
   if (!text) {
     return {
-      intent: COMMAND_INTENTS.CHAT,
+      intent: COMMAND_INTENTS.CONVERSATION,
       payload: {},
+      originalText: text,
+    }
+  }
+
+  if (isShortConversation(text)) {
+    return {
+      intent: COMMAND_INTENTS.CONVERSATION,
+      payload: {
+        text,
+      },
+      originalText: text,
+    }
+  }
+
+  if (isMemoryIntent(text)) {
+    return {
+      intent: COMMAND_INTENTS.MEMORY,
+      payload: {
+        text,
+      },
+      originalText: text,
+    }
+  }
+
+  if (isQuestion(text) && !isTaskSummary(text) && !isPriorityCheck(text) && !isFocusModeRequest(text)) {
+    return {
+      intent: COMMAND_INTENTS.QUESTION,
+      payload: {
+        question: text,
+      },
       originalText: text,
     }
   }
@@ -425,10 +478,9 @@ export function parseCommand(message) {
   }
 
   return {
-    intent: COMMAND_INTENTS.CLARIFY,
+    intent: COMMAND_INTENTS.CHAT,
     payload: {
-      needsClarification: true,
-      message: 'Nexus belum yakin maksudnya. Mau saya buat sebagai task, lead, atau konten?',
+      message: text,
     },
     originalText: text,
   }

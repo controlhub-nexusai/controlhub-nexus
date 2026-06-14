@@ -5,7 +5,7 @@ function labelizeStatus(status = '') {
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
-export default function ContentItem({ item, onMarkDrafted, onMarkPublished }) {
+export default function ContentItem({ item, onMarkDrafted, onMarkPublished, onDeleteContent }) {
   const platform = getPlatformIcon(item.platform)
 
   return (
@@ -29,6 +29,9 @@ export default function ContentItem({ item, onMarkDrafted, onMarkPublished }) {
         )}
         {item.status === 'drafted' && onMarkPublished && (
           <button type="button" onClick={() => onMarkPublished(item.id)}>Mark Published</button>
+        )}
+        {onDeleteContent && (
+          <button type="button" onClick={() => onDeleteContent(item)}>Delete</button>
         )}
       </div>
     </article>

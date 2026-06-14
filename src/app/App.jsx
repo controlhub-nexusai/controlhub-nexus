@@ -38,6 +38,7 @@ export default function App() {
     error: leadsError,
     loadLeads,
     addLead,
+    deleteLead,
     markContacted,
   } = useLeads()
   const {
@@ -46,6 +47,7 @@ export default function App() {
     error: contentError,
     loadContentIdeas,
     addContentIdea,
+    deleteContentIdea,
     markAsDrafted,
     markAsPublished,
   } = useContentIdeas()
@@ -54,6 +56,7 @@ export default function App() {
     loading: generatedContentLoading,
     error: generatedContentError,
     addGeneratedContent,
+    deleteGeneratedContent,
   } = useGeneratedContent()
 
   const refreshMemory = async () => {
@@ -77,8 +80,9 @@ export default function App() {
   }
 
   const handleAddMemory = async (key, value, type) => {
-    await addMemory(key, value, type)
+    const createdMemory = await addMemory(key, value, type)
     await refreshMemory()
+    return createdMemory
   }
 
   const handleUpdateMemory = async (id, value) => {
@@ -116,6 +120,9 @@ export default function App() {
           onAddGeneratedContent={addGeneratedContent}
           onAddMemory={handleAddMemory}
           onDeleteTask={deleteTask}
+          onDeleteLead={deleteLead}
+          onDeleteContentIdea={deleteContentIdea}
+          onDeleteGeneratedContent={deleteGeneratedContent}
           onToggleTask={toggleTaskStatus}
           onMarkLeadContacted={markContacted}
           onMarkContentDrafted={markAsDrafted}
@@ -161,6 +168,8 @@ export default function App() {
           onRetry={loadContentIdeas}
           onMarkDrafted={markAsDrafted}
           onMarkPublished={markAsPublished}
+          onDeleteContentIdea={deleteContentIdea}
+          onDeleteGeneratedContent={deleteGeneratedContent}
           onOpenJarvis={navigateToJarvis}
         />
       )}

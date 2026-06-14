@@ -57,12 +57,12 @@ export function buildNexusScore(tasks = []) {
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0
 
   const message = percentage === 100 && total > 0
-    ? '🏆 Semua tugas selesai.'
+    ? 'Semua tugas selesai.'
     : percentage >= 80
-    ? '🔥 Produktif hari ini.'
+    ? 'Progress hari ini kuat.'
     : percentage >= 50
-    ? '⚡ Progres bagus.'
-    : '🚀 Masih ada peluang menyelesaikan tugas hari ini.'
+    ? 'Progress berjalan.'
+    : 'Masih ada peluang menyelesaikan tugas hari ini.'
 
   return {
     completed,
@@ -173,7 +173,7 @@ export function buildMorningBriefing(tasks = [], memories = [], profile) {
       '',
       'Semua tugas aktif sudah selesai.',
       '',
-      'Bagus. Kamu bisa review hasil hari ini atau susun target berikutnya.',
+      'Langkah berikutnya: review hasil hari ini atau susun target berikutnya.',
     ].join('\n')
   }
 
@@ -214,7 +214,7 @@ export function buildTaskCompletionMessage(task, tasks = [], memories = [], prof
   const completedAfter = task.status === 'completed' ? completedBefore : completedBefore + 1
 
   return [
-    name ? `Bagus ${name}.` : 'Bagus.',
+    name ? `${name}, tugas selesai.` : 'Tugas selesai.',
     '',
     `Tugas "${task.title}"`,
     'telah diselesaikan.',

@@ -116,7 +116,7 @@ export default function ContentDetailModal({
         content: JSON.stringify(nextContent),
         status: item.status,
       })
-      setNotice('✅ Perubahan berhasil disimpan')
+      setNotice('Perubahan berhasil disimpan')
     } finally {
       setSaving(false)
     }
@@ -153,7 +153,7 @@ export default function ContentDetailModal({
       content: JSON.stringify(duplicateContent),
       status: 'draft',
     })
-    setNotice('✅ Konten berhasil diduplikasi')
+    setNotice('Konten berhasil diduplikasi')
   }
 
   return (

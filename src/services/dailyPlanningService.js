@@ -116,7 +116,7 @@ export function generateDailyPlan({
 
 export function buildDailyPlanResponse(plan) {
   return [
-    '✅ Rencana hari ini dibuat.',
+    'Rencana hari ini siap.',
     '',
     'Fokus:',
     plan.focus,

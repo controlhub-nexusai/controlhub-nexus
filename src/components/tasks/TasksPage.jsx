@@ -40,7 +40,7 @@ export default function TasksPage({
             <span className="eyebrow">Tasks</span>
             <h2>Task List</h2>
           </div>
-          <button type="button" className="add-task-toggle" onClick={onOpenJarvis}>Ask Jarvis</button>
+          <button type="button" className="add-task-toggle" onClick={onOpenJarvis}>Ask Nexus</button>
         </div>
 
         {loading && <div className="task-empty">Loading tasks...</div>}

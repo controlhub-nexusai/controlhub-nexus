@@ -16,7 +16,7 @@ export default function LeadsPage({
           <span className="eyebrow">Leads</span>
           <h2>Lead List</h2>
         </div>
-        <button type="button" className="add-task-toggle" onClick={onOpenJarvis}>Ask Jarvis</button>
+        <button type="button" className="add-task-toggle" onClick={onOpenJarvis}>Ask Nexus</button>
       </div>
 
       {loading && <div className="task-empty">Loading leads...</div>}

@@ -1,9 +1,9 @@
 import React from 'react'
 import ContentItem from './ContentItem'
 
-export default function ContentList({ items, onMarkDrafted, onMarkPublished }) {
+export default function ContentList({ items, onMarkDrafted, onMarkPublished, onDeleteContent }) {
   if (items.length === 0) {
-    return <div className="task-empty">No content yet. Ask Jarvis to create the next idea.</div>
+    return <div className="task-empty">No content yet. Ask Nexus to create the next idea.</div>
   }
 
   return (
@@ -14,6 +14,7 @@ export default function ContentList({ items, onMarkDrafted, onMarkPublished }) {
           item={item}
           onMarkDrafted={onMarkDrafted}
           onMarkPublished={onMarkPublished}
+          onDeleteContent={onDeleteContent}
         />
       ))}
     </div>

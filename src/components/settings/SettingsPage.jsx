@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react'
+import { summarizeMemoryGroups } from '../../services/jarvis/jarvisMemory'
 
 const INTEGRATION_ITEMS = [
   { title: 'Gemini API', detail: 'Configured from environment' },
-  { title: 'Local MVP data', detail: 'Jarvis can use tasks, leads, content, and memory.' },
+  { title: 'Local MVP data', detail: 'Nexus can use tasks, leads, content, and memory.' },
   { title: 'Future integrations', detail: 'Calendar, email, and voice remain placeholders.' },
 ]
 
@@ -29,7 +30,7 @@ export default function SettingsPage({
   const [isMemoryEditorOpen, setIsMemoryEditorOpen] = useState(false)
   const [draftValues, setDraftValues] = useState({})
   const profileDetail = userProfile?.isFallback
-    ? 'Complete profile memory for a more personal Jarvis.'
+    ? 'Complete profile memory for a more personal Nexus.'
     : [userProfile?.name, userProfile?.role].filter(Boolean).join(', ') || 'Profile loaded'
 
   useEffect(() => {
@@ -70,6 +71,12 @@ export default function SettingsPage({
       return [field.key, memory?.value || draftValues[field.key] || field.fallback]
     })
   )
+  const memorySummary = summarizeMemoryGroups(memories)
+  const rememberedThings = [
+    ...memorySummary.lead,
+    ...memorySummary.decision,
+    ...memorySummary.note,
+  ].slice(0, 4)
 
   return (
     <div className="page simple-page">
@@ -97,8 +104,8 @@ export default function SettingsPage({
       <section className="settings-card memory-engine-card">
         <div className="memory-profile-head">
           <div>
-            <strong>Memory Profile</strong>
-            <span>Jarvis remembers your working context.</span>
+            <strong>Memory Nexus</strong>
+            <span>Ringkasan singkat yang Nexus pakai di belakang layar.</span>
           </div>
         </div>
 
@@ -107,15 +114,28 @@ export default function SettingsPage({
 
         {!memoryLoading && !memoryError && (
           <div className="memory-profile-summary">
-            {MEMORY_PROFILE_FIELDS.slice(0, 3).map((field) => (
-              <div className="memory-profile-row" key={field.key}>
-                <span>{field.label}:</span>
-                <strong>{memoryProfile[field.key]}</strong>
-              </div>
-            ))}
+            <div className="memory-summary-block">
+              <span>Tentang Saya</span>
+              <strong>{memoryProfile.role}</strong>
+            </div>
+
+            <div className="memory-summary-block">
+              <span>Preferensi Nexus</span>
+              <strong>{memorySummary.preference[0] || 'Bahasa Indonesia, singkat, satu fokus.'}</strong>
+            </div>
+
+            <div className="memory-summary-block">
+              <span>Proyek Aktif</span>
+              <strong>{memoryProfile.project}</strong>
+            </div>
+
+            <div className="memory-summary-block">
+              <span>Hal yang Nexus Ingat</span>
+              <strong>{rememberedThings[0] || memoryProfile.goal}</strong>
+            </div>
 
             <button type="button" className="memory-edit-btn" onClick={() => setIsMemoryEditorOpen(true)}>
-              Edit Memory
+              Edit Ringkasan
             </button>
           </div>
         )}

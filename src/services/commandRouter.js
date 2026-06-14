@@ -1,6 +1,9 @@
 import { COMMAND_INTENTS, parseCommand } from './commandParser'
 
 const ROUTE_TYPES = {
+  [COMMAND_INTENTS.CONVERSATION]: 'chat',
+  [COMMAND_INTENTS.QUESTION]: 'chat',
+  [COMMAND_INTENTS.MEMORY]: 'memory',
   [COMMAND_INTENTS.TASK_CREATE]: 'task',
   [COMMAND_INTENTS.LEAD_CREATE]: 'lead',
   [COMMAND_INTENTS.CONTENT_CREATE]: 'content',
@@ -16,6 +19,24 @@ const ROUTE_TYPES = {
 }
 
 const ROUTE_CONFIG = {
+  [COMMAND_INTENTS.CONVERSATION]: {
+    module: 'jarvis',
+    action: 'conversation',
+    responseType: 'conversation',
+    service: 'chat',
+  },
+  [COMMAND_INTENTS.QUESTION]: {
+    module: 'jarvis',
+    action: 'question',
+    responseType: 'question',
+    service: 'chat',
+  },
+  [COMMAND_INTENTS.MEMORY]: {
+    module: 'jarvis',
+    action: 'memory',
+    responseType: 'memory',
+    service: 'memory',
+  },
   [COMMAND_INTENTS.TASK_CREATE]: {
     module: 'tasks',
     action: 'create',

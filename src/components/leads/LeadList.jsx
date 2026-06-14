@@ -3,7 +3,7 @@ import LeadItem from './LeadItem'
 
 export default function LeadList({ leads, onMarkContacted }) {
   if (leads.length === 0) {
-    return <div className="task-empty">No leads yet. Tell Jarvis to add the first one.</div>
+    return <div className="task-empty">No leads yet. Tell Nexus to add the first one.</div>
   }
 
   return (

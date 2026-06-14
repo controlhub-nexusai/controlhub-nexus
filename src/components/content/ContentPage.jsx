@@ -9,14 +9,20 @@ export default function ContentPage({
   onRetry,
   onMarkDrafted,
   onMarkPublished,
+  onDeleteContentIdea,
+  onDeleteGeneratedContent,
   onOpenJarvis,
 }) {
   const contentItems = useMemo(() => [
     ...generatedContent.map((item) => ({
       ...item,
       notes: item.content,
+      source: 'generated',
     })),
-    ...ideas,
+    ...ideas.map((item) => ({
+      ...item,
+      source: 'idea',
+    })),
   ], [generatedContent, ideas])
 
   return (
@@ -26,7 +32,7 @@ export default function ContentPage({
           <span className="eyebrow">Content</span>
           <h2>Content List</h2>
         </div>
-        <button type="button" className="add-task-toggle" onClick={onOpenJarvis}>Ask Jarvis</button>
+        <button type="button" className="add-task-toggle" onClick={onOpenJarvis}>Ask Nexus</button>
       </div>
 
       {loading && <div className="task-empty">Loading content...</div>}
@@ -43,6 +49,11 @@ export default function ContentPage({
           items={contentItems}
           onMarkDrafted={onMarkDrafted}
           onMarkPublished={onMarkPublished}
+          onDeleteContent={(item) =>
+            item.source === 'generated'
+              ? onDeleteGeneratedContent?.(item.id)
+              : onDeleteContentIdea?.(item.id)
+          }
         />
       )}
     </div>

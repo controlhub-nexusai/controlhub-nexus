@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase'
 
+const LOCAL_MEMORY_KEY = 'nexus.memory'
+
 const PROFILE_FIELDS = [
   'brand_name',
   'focus_area',
@@ -19,9 +21,37 @@ const DEFAULT_PROFILE = {
 }
 
 const DEFAULT_MEMORIES = [
+  { key: 'user_name', value: 'Zal', type: 'profile' },
+  { key: 'user_role', value: 'Customer Service dan Lead Generation', type: 'profile' },
   { key: 'project', value: 'ControlHub Nexus AI', type: 'project' },
+  { key: 'project_personal_branding', value: 'Personal Branding AI', type: 'project' },
+  { key: 'project_automation', value: 'Sistem Automation', type: 'project' },
+  { key: 'project_saas', value: 'Produk SaaS', type: 'project' },
   { key: 'goal', value: 'build AI branding and reduce repetitive work', type: 'goal' },
+  { key: 'goal_digital_assets', value: 'membangun aset digital', type: 'goal' },
   { key: 'platforms', value: 'Instagram, X, YouTube', type: 'platforms' },
+  {
+    key: 'momentum_active',
+    value: JSON.stringify({
+      type: 'momentum',
+      state: 'building',
+      summary: 'Zal sedang membangun identitas Nexus, ControlHub Nexus AI, dan AI branding dengan fokus utama menjaga scope tetap kecil.',
+      savedAt: new Date().toISOString(),
+    }),
+    type: 'momentum',
+  },
+  {
+    key: 'challenge_focus',
+    value: JSON.stringify({
+      type: 'challenge',
+      challenge: 'Terlalu banyak ide dan peluang baru dapat memecah fokus sebelum satu arah selesai.',
+      frequency: 'recurring',
+      status: 'active',
+      summary: 'Pola yang perlu dijaga: banyak ide, switching focus terlalu cepat, dan risiko overbuilding sebelum identitas inti matang.',
+      savedAt: new Date().toISOString(),
+    }),
+    type: 'challenge',
+  },
 ]
 
 function requireSupabase() {
@@ -54,7 +84,7 @@ function normalizeMemory(memory) {
 }
 
 function getFallbackMemories() {
-  return DEFAULT_MEMORIES.map((memory, index) => ({
+  const defaultMemories = DEFAULT_MEMORIES.map((memory, index) => ({
     id: `fallback-${memory.key}-${index}`,
     key: memory.key,
     value: memory.value,
@@ -62,6 +92,48 @@ function getFallbackMemories() {
     createdAt: new Date().toISOString(),
     isFallback: true,
   }))
+
+  return [...defaultMemories, ...loadLocalMemory()]
+}
+
+function loadLocalMemory() {
+  if (typeof window === 'undefined') return []
+
+  try {
+    return JSON.parse(window.localStorage.getItem(LOCAL_MEMORY_KEY) || '[]')
+  } catch {
+    return []
+  }
+}
+
+function saveLocalMemory(memories = []) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(LOCAL_MEMORY_KEY, JSON.stringify(memories))
+}
+
+function addLocalMemory(key, value, type = 'manual') {
+  const memory = {
+    id: `local-${Date.now()}`,
+    key,
+    value,
+    type,
+    createdAt: new Date().toISOString(),
+    isLocal: true,
+  }
+  saveLocalMemory([...loadLocalMemory(), memory])
+  return memory
+}
+
+function updateLocalMemory(id, value) {
+  const updated = loadLocalMemory().map((memory) =>
+    memory.id === id ? { ...memory, value } : memory
+  )
+  saveLocalMemory(updated)
+  return updated.find((memory) => memory.id === id)
+}
+
+function deleteLocalMemory(id) {
+  saveLocalMemory(loadLocalMemory().filter((memory) => memory.id !== id))
 }
 
 export async function getProfile() {
@@ -180,7 +252,9 @@ export async function loadMemory() {
 }
 
 export async function addMemory(key, value, type = 'manual') {
-  requireSupabase()
+  if (!supabase) {
+    return addLocalMemory(key, value, type)
+  }
 
   const payload = { key, value, type }
   const { data, error } = await supabase
@@ -198,7 +272,9 @@ export async function addMemory(key, value, type = 'manual') {
 }
 
 export async function updateMemory(id, value) {
-  requireSupabase()
+  if (!supabase || String(id).startsWith('local-')) {
+    return updateLocalMemory(id, value)
+  }
 
   const { data, error } = await supabase
     .from('memory')
@@ -216,7 +292,10 @@ export async function updateMemory(id, value) {
 }
 
 export async function deleteMemory(id) {
-  requireSupabase()
+  if (!supabase || String(id).startsWith('local-')) {
+    deleteLocalMemory(id)
+    return
+  }
 
   const { error } = await supabase
     .from('memory')

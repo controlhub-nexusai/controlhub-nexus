@@ -61,7 +61,7 @@ export function generateDailyBriefing(tasks = [], memories = [], profile) {
     recommendation: totalTasks === 0
       ? 'Apa yang ingin kamu capai hari ini?'
       : pendingTasks.length === 0
-      ? 'Bagus. Semua tugas aktif sudah selesai.'
+      ? 'Semua tugas aktif sudah selesai. Lanjutkan review atau rencana berikutnya.'
       : userContext.recommendation,
   }
 }

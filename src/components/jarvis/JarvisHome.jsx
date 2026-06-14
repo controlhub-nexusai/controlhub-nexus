@@ -6,6 +6,12 @@ import { extractTask } from '../../services/taskParser'
 import { buildDailyPlanResponse, generateDailyPlan } from '../../services/dailyPlanningService'
 import { buildDailyReviewResponse, generateDailyReview } from '../../services/dailyReviewService'
 import { buildWeeklyReviewResponse, generateWeeklyReview } from '../../services/weeklyReviewService'
+import {
+  buildDailyBriefingCards,
+  buildDailyBriefingCommandResponse,
+  getDailyBriefingCommand,
+} from '../../services/dailyBriefingIntelligence'
+import { evaluateJudgment } from '../../services/judgmentEngine'
 import { generateExecutiveBriefing } from '../../services/executiveBriefingService'
 import { buildFocusResponse, generateFocusTask } from '../../services/focusService'
 import { generateContentIdea } from '../../services/contentGenerator'
@@ -24,14 +30,22 @@ import {
   isLateWorkWindow,
   softenRecommendation,
 } from '../../services/jarvis/jarvisPersonality'
+import {
+  answerFromJarvisMemory,
+  buildContinuityWelcomeMessage,
+  buildMemorySavedResponse,
+  createJarvisMemoryFromText,
+  isMemoryCaptureRequest,
+} from '../../services/jarvis/jarvisMemory'
 
 const TASK_TIME_ACTIONS = ['09:00 Pagi', '12:00 Siang', '18:00 Sore', 'Pilih Jam Lain']
 const CONTENT_PLATFORM_ACTIONS = ['Instagram', 'X', 'YouTube']
 const PENDING_TASK_KEY = 'nexus.pendingTask'
+const LAST_SEEN_KEY = 'nexus.lastSeenAt'
 const THINKING_MESSAGES = [
-  'Jarvis sedang mengetik...',
-  '🧠 Jarvis sedang berpikir...',
-  '📋 Mengecek prioritas...',
+  'Nexus sedang mengetik...',
+  'Nexus sedang berpikir...',
+  'Mengecek prioritas...',
   'Aku cek sebentar...',
   'Sebentar, aku rapikan konteksnya...',
 ]
@@ -41,6 +55,7 @@ const THINKING_DELAYS = {
   medium: [1500, 3000],
   strategic: [3000, 6000],
 }
+const STATE_SAVE_FAILED = 'Belum berhasil saya simpan karena terjadi kesalahan saat memperbarui data.'
 
 function getCurrentTime() {
   const time = new Date().toLocaleTimeString('id-ID', {
@@ -88,10 +103,40 @@ function getThinkingMessage(text = '') {
   const depth = getThinkingDepth(text)
 
   if (depth === 'strategic') {
-    return Math.random() > 0.5 ? '🧠 Jarvis sedang berpikir...' : '📋 Mengecek prioritas...'
+    return Math.random() > 0.5 ? 'Nexus sedang berpikir...' : 'Mengecek prioritas...'
   }
 
   return getRandomThinkingMessage()
+}
+
+function getWordCount(text = '') {
+  return text.trim().split(/\s+/).filter(Boolean).length
+}
+
+function isConversationIntent(text = '') {
+  const normalized = text.trim().toLowerCase()
+
+  return getWordCount(normalized) < 3
+    && /^(oke|ok|baik|sip|siap|tidak|nggak|enggak|ga|gak|lanjut|mantap|ya|iya|boleh|bisa|thanks|makasih|terima kasih)\b/i.test(normalized)
+}
+
+function buildConversationResponse(text = '') {
+  const normalized = text.trim().toLowerCase()
+
+  if (/^(tidak|nggak|enggak|ga|gak)\b/.test(normalized)) {
+    return 'Saya tahan dulu arahnya. Kalau harus tetap menjaga momentum, kita cukup pilih satu hal kecil yang paling dekat selesai.'
+  }
+  if (/^(lanjut)\b/.test(normalized)) {
+    return 'Kita lanjut, tapi tetap satu jalur. Langkah berikutnya: selesaikan bagian yang paling dekat memberi hasil.'
+  }
+  if (/^(thanks|makasih|terima kasih)\b/.test(normalized)) {
+    return 'Sama-sama. Yang penting sekarang bukan menambah ide, tapi menjaga langkah berikutnya tetap jelas.'
+  }
+  if (/^(mantap|sip|siap)\b/.test(normalized)) {
+    return 'Siap. Kita jaga momentum ini dengan satu langkah kecil yang bisa selesai, bukan membuka cabang baru.'
+  }
+
+  return 'Oke. Saya akan bantu jaga percakapan ini tetap mengarah ke keputusan, bukan sekadar respons.'
 }
 
 function formatFocusCountdown(seconds = 0) {
@@ -120,8 +165,19 @@ function buildExecutiveBriefingResponse(briefing) {
   ].join('\n')
 }
 
-function buildNexusWelcomeMessage(profile, profileCompleted) {
-  return getJarvisOpeningMessage(profile, profileCompleted)
+function getStoredLastSeenAt() {
+  if (typeof window === 'undefined') return ''
+  return window.localStorage.getItem(LAST_SEEN_KEY) || ''
+}
+
+function storeLastSeenAt() {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString())
+}
+
+function buildNexusWelcomeMessage(profile, profileCompleted, memories = [], lastSeenAt = '') {
+  return buildContinuityWelcomeMessage(profile, profileCompleted, memories, lastSeenAt)
+    || getJarvisOpeningMessage(profile, profileCompleted)
 }
 
 function formatTaskCategory(category) {
@@ -380,9 +436,9 @@ function buildLeadCreatedResponse(lead) {
 
 function buildGeneratedContentCreatedResponse(generated) {
   return [
-    '✅ Draft berhasil dibuat.',
+    'Draft berhasil dibuat.',
     '',
-    '📂 Disimpan ke Content Workspace.',
+    'Disimpan ke Content Workspace.',
   ].join('\n')
 }
 
@@ -641,7 +697,7 @@ function buildDailySummaryReply(tasks = [], leads = [], content = []) {
 
   if (completed === 0 && active === 0 && !lead && !contentItem) {
     return [
-      'Hari ini masih cukup kosong di data Jarvis.',
+      'Hari ini masih cukup kosong di data Nexus.',
       '',
       'Kalau ada hal penting, ceritakan saja.',
       'Aku simpan konteksnya.',
@@ -667,23 +723,6 @@ function buildTomorrowPlanReply({ tasks = [], leads = [], content = [] }) {
     'Untuk besok, aku akan taruh satu hal ini di depan:',
     '',
     oneThing,
-  ].join('\n')
-}
-
-function isMemoryCaptureRequest(text = '') {
-  return /\b(ingat|simpan|catat|minta|butuh|perlu|follow up|proposal|minggu depan|besok)\b/i.test(text)
-    && !/^(buat|bikin|tambahkan|add)\s+(task|lead|konten|content)/i.test(text)
-}
-
-function buildMemorySavedResponse(text = '') {
-  const reminderHint = /\b(besok|minggu depan|nanti|deadline|tanggal|pagi|siang|sore|malam)\b/i.test(text)
-
-  return [
-    'Oke, aku simpan.',
-    '',
-    reminderHint
-      ? 'Aku akan ingatkan saat waktunya mendekat.'
-      : 'Nanti aku pakai ini sebagai konteks.',
   ].join('\n')
 }
 
@@ -713,9 +752,197 @@ function isLeadPriority(task = {}) {
 function normalizeLookupText(value = '') {
   return value
     .toLowerCase()
-    .replace(/\b(follow up|followup|hubungi|lead|client|customer|meeting|dengan|ke)\b/g, '')
+    .replace(/\b(follow up|followup|hubungi|lead|client|customer|meeting|dengan|ke|hapus|delete|buang|konten|content|draft|task|tugas|selesai|done|contacted|dihubungi)\b/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function tokenizeLookup(value = '') {
+  return normalizeLookupText(value)
+    .split(/\s+/)
+    .filter((token) => token.length > 1)
+}
+
+function getMatchScore(query = '', itemText = '') {
+  const queryTokens = tokenizeLookup(query)
+  const item = normalizeLookupText(itemText)
+  if (!queryTokens.length || !item) return 0
+
+  const hits = queryTokens.filter((token) => item.includes(token)).length
+  return hits / queryTokens.length
+}
+
+function findBestMatch(query = '', items = [], getText = (item) => item.title || item.name || '') {
+  const scored = items
+    .map((item) => ({
+      item,
+      score: getMatchScore(query, getText(item)),
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+
+  return scored[0]?.score >= 0.34 ? scored[0].item : null
+}
+
+function capitalizeHumanName(value = '') {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+}
+
+function cleanLeadNameCandidate(value = '') {
+  return value
+    .replace(/\s+(dan|dengan|untuk)\s+.*$/i, '')
+    .replace(/\b(sebagai|jadi)\s+(lead|prospek|client|klien)\b.*$/i, '')
+    .replace(/\b(besok|hari ini|jam\s*\d{1,2}(?:[.:]\d{2})?\s*(pagi|siang|sore|malam)?|follow\s*up|followup|hubungi|kontak)\b.*$/i, '')
+    .replace(/[.,!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extractLeadActionDetails(text = '') {
+  const patterns = [
+    /\b(?:tambahkan|tambah|add|masukkan|simpan)\s+(.+?)\s+(?:sebagai|jadi)\s+(?:lead|prospek|client|klien)\b/i,
+    /\b(?:tambahkan|tambah|add|masukkan|simpan)\s+(?:lead|prospek|client|klien)\s+(.+)$/i,
+    /\b(?:lead|prospek|client|klien)\s+(?:baru\s+)?(?:bernama\s+|nama(?:nya)?\s+)?(.+)$/i,
+  ]
+
+  const match = patterns.map((pattern) => text.match(pattern)).find(Boolean)
+  const rawName = cleanLeadNameCandidate(match?.[1] || '')
+  if (!rawName) return null
+
+  return {
+    name: capitalizeHumanName(rawName),
+    source: /\binstagram|ig\b/i.test(text) ? 'Instagram' : 'Manual',
+    status: /\b(contacted|sudah dihubungi)\b/i.test(text) ? 'contacted' : 'new',
+    notes: text,
+  }
+}
+
+function hasFollowUpSignal(text = '') {
+  return /\b(follow\s*up|followup|hubungi|kontak|ingatkan)\b/i.test(text)
+}
+
+function isFollowUpTaskCreateRequest(text = '') {
+  return hasFollowUpSignal(text)
+    && /\b(buat(?:kan)?|bikin|jadwalkan|ingatkan|tambahkan|tambah|create)\b/i.test(text)
+    && !/\b(sudah|telah|tandai|mark|set)\b/i.test(text)
+}
+
+function extractFollowUpName(text = '') {
+  const match = text.match(/\b(?:follow\s*up|followup|hubungi|kontak)\s+(.+)$/i)
+  const rawName = cleanLeadNameCandidate(match?.[1] || '')
+  return rawName ? capitalizeHumanName(rawName) : ''
+}
+
+function extractFollowUpSchedule(text = '') {
+  const dueDate = /\bbesok\b/i.test(text)
+    ? 'tomorrow'
+    : /\bhari ini\b/i.test(text)
+      ? 'today'
+      : undefined
+
+  return {
+    dueDate,
+    dueDateValue: resolveDueDateValue(dueDate),
+    dueTime: parseTimeAnswer(text),
+  }
+}
+
+function buildFollowUpTask(text = '', lead = {}) {
+  const schedule = extractFollowUpSchedule(text)
+  return {
+    title: `Follow up ${lead.name}`,
+    category: 'work',
+    status: 'pending',
+    priority: 'medium',
+    ...schedule,
+  }
+}
+
+function formatFollowUpScheduleText(task = {}) {
+  const dateText = task.dueDate === 'tomorrow'
+    ? 'besok'
+    : task.dueDate === 'today'
+      ? 'hari ini'
+      : ''
+  const timeText = task.dueTime
+    ? `jam ${Number(task.dueTime.slice(0, 2))}${task.dueTime.endsWith(':00') ? '' : `:${task.dueTime.slice(3)}`}`
+    : ''
+
+  return [dateText, timeText].filter(Boolean).join(' ')
+}
+
+function verifyLeadExists(createdLead, expectedName) {
+  return Boolean(
+    createdLead?.id
+    && normalizeLookupText(createdLead.name) === normalizeLookupText(expectedName)
+  )
+}
+
+function verifyTaskExists(createdTask, expectedTitle) {
+  return Boolean(
+    createdTask?.id
+    && normalizeLookupText(createdTask.title) === normalizeLookupText(expectedTitle)
+  )
+}
+
+function getContentActionItems(generatedContent = [], contentIdeas = []) {
+  return [
+    ...generatedContent.map((item) => ({
+      ...item,
+      source: 'generated',
+      actionTitle: item.title || 'Untitled draft',
+      actionKind: 'content',
+    })),
+    ...contentIdeas.map((item) => ({
+      ...item,
+      source: 'idea',
+      actionTitle: item.title || 'Untitled content',
+      actionKind: 'content',
+    })),
+  ]
+}
+
+function isDraftContent(item = {}) {
+  return ['draft', 'drafted', 'idea', 'pending'].includes(String(item.status || '').toLowerCase())
+}
+
+function isDeleteContentRequest(text = '') {
+  return /\b(hapus|delete|buang)\b/i.test(text)
+    && /\b(draft|konten|content|instagram|youtube|caption|post)\b/i.test(text)
+}
+
+function isDeleteAllRequest(text = '') {
+  return /\b(semua|seluruh|all)\b/i.test(text)
+}
+
+function isCriticalActionRequest(text = '') {
+  return /\b(reset workspace|delete all memory|hapus semua memory|hapus semua memori|delete all tasks|hapus semua task|hapus semua tugas|delete everything|hapus semuanya|reset semuanya)\b/i.test(text)
+}
+
+function isMarkTaskDoneRequest(text = '') {
+  return /\b(task|tugas)\b/i.test(text)
+    && /\b(tandai|mark|jadikan|set|selesaikan|complete|selesai|done|completed)\b/i.test(text)
+}
+
+function isDeleteTaskRequest(text = '') {
+  return /\b(hapus|delete|buang)\b/i.test(text)
+    && /\b(task|tugas)\b/i.test(text)
+}
+
+function isMarkLeadContactedRequest(text = '') {
+  return /\b(tandai|mark|set|sudah)\b/i.test(text)
+    && /\b(lead|prospek|client|klien)\b/i.test(text)
+    && /\b(contacted|dihubungi|hubungi|follow up|followup)\b/i.test(text)
+}
+
+function isDeleteLeadRequest(text = '') {
+  return /\b(hapus|delete|buang)\b/i.test(text)
+    && /\b(lead|prospek|client|klien)\b/i.test(text)
 }
 
 function findRelatedLead(task, leads = []) {
@@ -751,6 +978,10 @@ export default function JarvisHome({
   onAddGeneratedContent,
   onAddMemory,
   onToggleTask,
+  onDeleteTask,
+  onDeleteLead,
+  onDeleteContentIdea,
+  onDeleteGeneratedContent,
   onMarkLeadContacted,
   onMarkContentDrafted,
   tasksLoading,
@@ -785,6 +1016,12 @@ export default function JarvisHome({
     content: generatedContent,
     reminders: upcomingTasks,
   }), [tasks, leads, generatedContent, upcomingTasks])
+  const briefingInputs = useMemo(() => ({
+    tasks,
+    leads,
+    content: [...generatedContent, ...contentIdeas],
+    memories,
+  }), [contentIdeas, generatedContent, leads, memories, tasks])
   const reviewInputs = useMemo(() => ({
     tasks,
     leads,
@@ -802,12 +1039,14 @@ export default function JarvisHome({
   const contentReadyCount = useMemo(() => generatedContent.filter((item) =>
     ['approved', 'ready', 'ready_to_publish'].includes(String(item.status || '').toLowerCase())
   ).length, [generatedContent])
+  const dailyBriefingCards = useMemo(() => buildDailyBriefingCards(briefingInputs), [briefingInputs])
+  const [lastSeenAt] = useState(getStoredLastSeenAt)
 
   const [messages, setMessages] = useState([
     {
       role: 'ai',
       type: 'daily-briefing',
-      text: buildNexusWelcomeMessage(userProfile, profileCompleted),
+      text: buildNexusWelcomeMessage(userProfile, profileCompleted, memories, lastSeenAt),
       time: getCurrentTime(),
     },
   ])
@@ -817,6 +1056,8 @@ export default function JarvisHome({
   const [thinkingText, setThinkingText] = useState(THINKING_MESSAGES[0])
   const [pendingTask, setPendingTask] = useState(loadPendingTask)
   const [pendingContentDraft, setPendingContentDraft] = useState(null)
+  const [pendingAction, setPendingAction] = useState(null)
+  const [pendingConfirmation, setPendingConfirmation] = useState(null)
   const [focusTask, setFocusTask] = useState(() => generateFocusTask(focusInputs))
   const [selectedFocusMinutes, setSelectedFocusMinutes] = useState(() => generateFocusTask(focusInputs).duration)
   const [focusSession, setFocusSession] = useState({
@@ -829,10 +1070,43 @@ export default function JarvisHome({
   const [weeklyReview, setWeeklyReview] = useState(() => generateWeeklyReview(weeklyReviewInputs))
   const [isWeeklyReviewExpanded, setIsWeeklyReviewExpanded] = useState(false)
   const scrollRef = useRef(null)
+  const messagesEndRef = useRef(null)
+  const isProgrammaticScrollRef = useRef(false)
+  const [isPinnedToLatest, setIsPinnedToLatest] = useState(true)
+
+  const scrollToLatest = useCallback((behavior = 'smooth') => {
+    const container = scrollRef.current
+    const end = messagesEndRef.current
+    if (!container || !end) return
+
+    isProgrammaticScrollRef.current = true
+    container.scrollTo({
+      top: Math.max(0, container.scrollHeight - container.clientHeight),
+      behavior,
+    })
+    setIsPinnedToLatest(true)
+
+    window.setTimeout(() => {
+      isProgrammaticScrollRef.current = false
+    }, behavior === 'smooth' ? 360 : 0)
+  }, [])
+
+  const handleChatScroll = useCallback(() => {
+    if (isProgrammaticScrollRef.current) return
+
+    const container = scrollRef.current
+    if (!container) return
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    setIsPinnedToLatest(distanceFromBottom < 72)
+  }, [])
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, isThinking])
+    if (!isPinnedToLatest) return
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => scrollToLatest('smooth'))
+    })
+  }, [messages, isThinking, isTyping, isPinnedToLatest, scrollToLatest])
 
   const createFocusTask = useCallback(() => {
     const nextFocusTask = generateFocusTask(focusInputs)
@@ -926,12 +1200,16 @@ export default function JarvisHome({
         index === 0 && message.type === 'daily-briefing'
           ? {
             ...message,
-            text: buildNexusWelcomeMessage(userProfile, profileCompleted),
+            text: buildNexusWelcomeMessage(userProfile, profileCompleted, memories, lastSeenAt),
           }
           : message
       )
     )
-  }, [profileCompleted, tasksLoading, userProfile])
+  }, [lastSeenAt, memories, profileCompleted, tasksLoading, userProfile])
+
+  useEffect(() => {
+    storeLastSeenAt()
+  }, [messages.length])
 
   const createScheduledTask = async (task, reminderMinutes = 30) => {
     const createdTask = await onAddTask(toTaskPayload(task, reminderMinutes))
@@ -942,6 +1220,111 @@ export default function JarvisHome({
       dueTime: task.dueTime,
       reminderMinutes,
     }
+  }
+
+  const executeLeadCreation = async (text, leadPayload) => {
+    if (!onAddLead) {
+      setMessages((prev) => [...prev, { role: 'ai', text: STATE_SAVE_FAILED, time: getCurrentTime() }])
+      return true
+    }
+
+    try {
+      const payload = leadPayload || extractLeadActionDetails(text)
+      if (!payload?.name) return false
+
+      const createdLead = await onAddLead(payload)
+      if (!verifyLeadExists(createdLead, payload.name)) {
+        throw new Error('Lead verification failed.')
+      }
+
+      const shouldCreateFollowUp = hasFollowUpSignal(text)
+      if (!shouldCreateFollowUp) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'ai',
+            text: `${createdLead.name} sudah saya tambahkan sebagai lead.`,
+            time: getCurrentTime(),
+            action: {
+              label: 'Lihat Lead',
+              onClick: onShowLeads,
+            },
+          },
+        ])
+        return true
+      }
+
+      const followUpTask = buildFollowUpTask(text, createdLead)
+      const createdTask = await createScheduledTask(followUpTask)
+      if (!verifyTaskExists(createdTask, followUpTask.title)) {
+        throw new Error('Follow-up task verification failed.')
+      }
+
+      const scheduleText = formatFollowUpScheduleText(followUpTask)
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          text: [
+            `${createdLead.name} sudah saya tambahkan sebagai lead.`,
+            `Task follow up${scheduleText ? ` ${scheduleText}` : ''} juga sudah dibuat.`,
+          ].join('\n'),
+          time: getCurrentTime(),
+          action: {
+            label: 'Lihat Task',
+            onClick: onShowTasks,
+          },
+        },
+      ])
+      return true
+    } catch (error) {
+      console.error('[Nexus State] Lead creation failed:', error)
+      setMessages((prev) => [...prev, { role: 'ai', text: STATE_SAVE_FAILED, time: getCurrentTime() }])
+      return true
+    }
+  }
+
+  const executeFollowUpTaskCreation = async (text) => {
+    if (!isFollowUpTaskCreateRequest(text)) return false
+
+    try {
+      const mentionedName = extractFollowUpName(text)
+      const matchedLead = findBestMatch(mentionedName || text, leads, (lead) => `${lead.name || ''} ${lead.company || ''}`)
+      const leadName = matchedLead?.name || mentionedName
+      if (!leadName) return false
+
+      const followUpTask = buildFollowUpTask(text, { name: leadName })
+      const createdTask = await createScheduledTask(followUpTask)
+      if (!verifyTaskExists(createdTask, followUpTask.title)) {
+        throw new Error('Follow-up task verification failed.')
+      }
+
+      const scheduleText = formatFollowUpScheduleText(followUpTask)
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          text: `Task follow up ${leadName}${scheduleText ? ` ${scheduleText}` : ''} sudah dibuat.`,
+          time: getCurrentTime(),
+          action: {
+            label: 'Lihat Task',
+            onClick: onShowTasks,
+          },
+        },
+      ])
+      return true
+    } catch (error) {
+      console.error('[Nexus State] Follow-up task creation failed:', error)
+      setMessages((prev) => [...prev, { role: 'ai', text: STATE_SAVE_FAILED, time: getCurrentTime() }])
+      return true
+    }
+  }
+
+  const executeStateCommand = async (text) => {
+    const leadDetails = extractLeadActionDetails(text)
+    if (leadDetails) return executeLeadCreation(text, leadDetails)
+
+    return executeFollowUpTaskCreation(text)
   }
 
   const saveGeneratedDraft = async (generated) => {
@@ -969,6 +1352,358 @@ export default function JarvisHome({
     if (onShowContent) {
       window.setTimeout(onShowContent, 350)
     }
+  }
+
+  const deleteContentItem = async (item) => {
+    if (!item) throw new Error('Content not found.')
+    if (item.source === 'generated') {
+      if (!onDeleteGeneratedContent) throw new Error('Generated content delete is unavailable.')
+      await onDeleteGeneratedContent(item.id)
+      return
+    }
+
+    if (!onDeleteContentIdea) throw new Error('Content idea delete is unavailable.')
+    await onDeleteContentIdea(item.id)
+  }
+
+  const resolveContentTarget = (text, candidates = getContentActionItems(generatedContent, contentIdeas).filter(isDraftContent)) => {
+    const directMatch = findBestMatch(text, candidates, (item) => `${item.title || ''} ${item.platform || ''}`)
+    if (directMatch) return { target: directMatch }
+    if (candidates.length === 1) return { target: candidates[0] }
+    if (candidates.length > 1) return { needsClarification: true, candidates }
+    return { notFound: true }
+  }
+
+  const resolveTaskTarget = (text, candidates = tasks.filter((task) => task.status !== 'completed')) => {
+    const directMatch = findBestMatch(text, candidates, (task) => task.title || '')
+    if (directMatch) return { target: directMatch }
+    if (candidates.length === 1) return { target: candidates[0] }
+    if (candidates.length > 1) return { needsClarification: true, candidates }
+    return { notFound: true }
+  }
+
+  const resolveLeadTarget = (text, candidates = leads) => {
+    const directMatch = findBestMatch(text, candidates, (lead) => `${lead.name || ''} ${lead.company || ''}`)
+    if (directMatch) return { target: directMatch }
+    if (candidates.length === 1) return { target: candidates[0] }
+    if (candidates.length > 1) return { needsClarification: true, candidates }
+    return { notFound: true }
+  }
+
+  const getActionLabel = (item) => item.actionTitle || item.title || item.name || item.company || 'Untitled'
+
+  const askActionClarification = (type, candidates, prompt) => {
+    setPendingAction({ type, candidates })
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'ai',
+        text: prompt,
+        time: getCurrentTime(),
+        quickActions: candidates.slice(0, 6).map(getActionLabel),
+      },
+    ])
+  }
+
+  const executeActionTarget = async (type, target) => {
+    if (type === 'delete_content') {
+      await deleteContentItem(target)
+      return 'Sudah saya hapus draft itu dari Content.'
+    }
+
+    if (type === 'delete_all_content') {
+      await Promise.all(target.map(deleteContentItem))
+      return target.length === 1
+        ? 'Sudah saya hapus draft itu dari Content.'
+        : `Sudah saya hapus ${target.length} draft dari Content.`
+    }
+
+    if (type === 'mark_task_done') {
+      if (!onToggleTask) throw new Error('Task update is unavailable.')
+      await onToggleTask(target.id, target.status)
+      return `Sudah saya tandai task "${target.title}" selesai.`
+    }
+
+    if (type === 'delete_task') {
+      if (!onDeleteTask) throw new Error('Task delete is unavailable.')
+      await onDeleteTask(target.id)
+      return `Sudah saya hapus task "${target.title}".`
+    }
+
+    if (type === 'mark_lead_contacted') {
+      if (!onMarkLeadContacted) throw new Error('Lead update is unavailable.')
+      await onMarkLeadContacted(target.id)
+      return `Sudah saya tandai ${target.name || target.company || 'lead itu'} sebagai contacted.`
+    }
+
+    if (type === 'delete_lead') {
+      if (!onDeleteLead) throw new Error('Lead delete is unavailable.')
+      await onDeleteLead(target.id)
+      return `Sudah saya hapus lead ${target.name || target.company || 'itu'}.`
+    }
+
+    throw new Error('Unknown action.')
+  }
+
+  const requestActionConfirmation = ({ type, target, summary, successText, failText }) => {
+    setPendingConfirmation({
+      type,
+      target,
+      successText,
+      failText,
+    })
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'ai',
+        text: summary,
+        time: getCurrentTime(),
+        quickActions: ['Ya, Hapus', 'Batal'],
+      },
+    ])
+  }
+
+  const isDestructiveAction = (type) =>
+    ['delete_content', 'delete_all_content', 'delete_task', 'delete_lead'].includes(type)
+
+  const buildDeleteConfirmation = (type, target) => {
+    if (type === 'delete_all_content') {
+      return {
+        summary: [
+          `Saya menemukan ${target.length} draft.`,
+          '',
+          'Apakah kamu yakin ingin menghapus semuanya?',
+        ].join('\n'),
+        successText: target.length === 1
+          ? 'Sudah saya hapus draft itu dari Content.'
+          : `Sudah saya hapus ${target.length} draft dari Content.`,
+        failText: 'Belum berhasil saya hapus. Ada masalah saat memperbarui data.',
+      }
+    }
+
+    if (type === 'delete_content') {
+      return {
+        summary: [
+          `Saya menemukan draft: ${getActionLabel(target)}.`,
+          '',
+          'Apakah kamu yakin ingin menghapus draft ini?',
+        ].join('\n'),
+        successText: 'Sudah saya hapus draft itu dari Content.',
+        failText: 'Belum berhasil saya hapus. Ada masalah saat memperbarui data.',
+      }
+    }
+
+    if (type === 'delete_task') {
+      return {
+        summary: [
+          `Saya menemukan task: ${getActionLabel(target)}.`,
+          '',
+          'Apakah kamu yakin ingin menghapus task ini?',
+        ].join('\n'),
+        successText: `Sudah saya hapus task "${target.title}".`,
+        failText: 'Belum berhasil saya hapus. Ada masalah saat memperbarui data.',
+      }
+    }
+
+    if (type === 'delete_lead') {
+      return {
+        summary: [
+          `Saya menemukan lead: ${getActionLabel(target)}.`,
+          '',
+          'Apakah kamu yakin ingin menghapus lead ini?',
+        ].join('\n'),
+        successText: `Sudah saya hapus lead ${target.name || target.company || 'itu'}.`,
+        failText: 'Belum berhasil saya hapus. Ada masalah saat memperbarui data.',
+      }
+    }
+
+    return null
+  }
+
+  const confirmDestructiveAction = (type, target) => {
+    const confirmation = buildDeleteConfirmation(type, target)
+    if (!confirmation) return false
+
+    requestActionConfirmation({
+      type,
+      target,
+      ...confirmation,
+    })
+    return true
+  }
+
+  const handlePendingConfirmation = async (text) => {
+    if (!pendingConfirmation) return false
+
+    if (pendingConfirmation.requiredText) {
+      if (text.trim() !== pendingConfirmation.requiredText) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'ai',
+            text: `Saya belum akan menjalankan aksi kritis ini. Ketik ${pendingConfirmation.requiredText} persis jika ingin melanjutkan.`,
+            time: getCurrentTime(),
+          },
+        ])
+        return true
+      }
+
+      setPendingConfirmation(null)
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          text: 'Saya belum menjalankan reset. Aksi kritis ini belum diaktifkan di sistem.',
+          time: getCurrentTime(),
+        },
+      ])
+      return true
+    }
+
+    if (/^(batal|cancel|jangan|tidak|nggak|ga|gak)\b/i.test(text.trim())) {
+      setPendingConfirmation(null)
+      setMessages((prev) => [...prev, { role: 'ai', text: 'Saya batalkan. Tidak ada data yang dihapus.', time: getCurrentTime() }])
+      return true
+    }
+
+    if (!/^(ya,\s*)?hapus\b|^ya\b|^confirm\b|^lanjut\b/i.test(text.trim())) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          text: 'Saya belum akan menjalankan aksi ini sebelum kamu konfirmasi.',
+          time: getCurrentTime(),
+          quickActions: ['Ya, Hapus', 'Batal'],
+        },
+      ])
+      return true
+    }
+
+    try {
+      const response = pendingConfirmation.successText || await executeActionTarget(pendingConfirmation.type, pendingConfirmation.target)
+      if (pendingConfirmation.successText) {
+        await executeActionTarget(pendingConfirmation.type, pendingConfirmation.target)
+      }
+      setPendingConfirmation(null)
+      setMessages((prev) => [...prev, { role: 'ai', text: response, time: getCurrentTime() }])
+    } catch (error) {
+      console.error('[Nexus Action] Confirmed action failed:', error)
+      const failText = pendingConfirmation.failText || 'Belum berhasil saya hapus. Ada masalah saat memperbarui data.'
+      setPendingConfirmation(null)
+      setMessages((prev) => [...prev, { role: 'ai', text: failText, time: getCurrentTime() }])
+    }
+
+    return true
+  }
+
+  const handlePendingAction = async (text) => {
+    if (!pendingAction) return false
+
+    const match = findBestMatch(text, pendingAction.candidates, (item) =>
+      `${getActionLabel(item)} ${item.platform || item.company || ''}`
+    )
+
+    if (!match) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          text: 'Saya belum menemukan pilihan yang cocok.',
+          time: getCurrentTime(),
+          quickActions: pendingAction.candidates.slice(0, 6).map(getActionLabel),
+        },
+      ])
+      return true
+    }
+
+    if (isDestructiveAction(pendingAction.type)) {
+      confirmDestructiveAction(pendingAction.type, match)
+      setPendingAction(null)
+      return true
+    }
+
+    try {
+      const response = await executeActionTarget(pendingAction.type, match)
+      setPendingAction(null)
+      setMessages((prev) => [...prev, { role: 'ai', text: response, time: getCurrentTime() }])
+    } catch (error) {
+      console.error('[Nexus Action] Pending action failed:', error)
+      setMessages((prev) => [...prev, { role: 'ai', text: 'Belum berhasil saya perbarui. Ada masalah saat memperbarui data.', time: getCurrentTime() }])
+    }
+
+    return true
+  }
+
+  const executeChatAction = async (text) => {
+    const actionConfig = (() => {
+      if (isCriticalActionRequest(text)) return { type: 'critical', resolve: () => ({ critical: true }) }
+      if (isDeleteContentRequest(text) && isDeleteAllRequest(text)) {
+        return {
+          type: 'delete_all_content',
+          resolve: () => {
+            const candidates = getContentActionItems(generatedContent, contentIdeas).filter(isDraftContent)
+            return candidates.length > 0 ? { target: candidates } : { notFound: true }
+          },
+          notFound: 'Saya belum menemukan draft yang cocok.',
+          fail: 'Belum berhasil saya hapus. Ada masalah saat memperbarui data.',
+        }
+      }
+      if (isDeleteContentRequest(text)) return { type: 'delete_content', resolve: () => resolveContentTarget(text), clarify: 'Draft yang mana yang ingin dihapus?', notFound: 'Saya belum menemukan draft yang cocok.', fail: 'Belum berhasil saya hapus. Ada masalah saat memperbarui data.' }
+      if (isMarkTaskDoneRequest(text)) return { type: 'mark_task_done', resolve: () => resolveTaskTarget(text), clarify: 'Task yang mana yang ingin ditandai selesai?', notFound: 'Saya belum menemukan task yang cocok.', fail: 'Belum berhasil saya perbarui. Ada masalah saat memperbarui data.' }
+      if (isDeleteTaskRequest(text)) return { type: 'delete_task', resolve: () => resolveTaskTarget(text, tasks), clarify: 'Task yang mana yang ingin dihapus?', notFound: 'Saya belum menemukan task yang cocok.', fail: 'Belum berhasil saya hapus. Ada masalah saat memperbarui data.' }
+      if (isMarkLeadContactedRequest(text)) return { type: 'mark_lead_contacted', resolve: () => resolveLeadTarget(text), clarify: 'Lead yang mana yang sudah dihubungi?', notFound: 'Saya belum menemukan lead yang cocok.', fail: 'Belum berhasil saya perbarui. Ada masalah saat memperbarui data.' }
+      if (isDeleteLeadRequest(text)) return { type: 'delete_lead', resolve: () => resolveLeadTarget(text), clarify: 'Lead yang mana yang ingin dihapus?', notFound: 'Saya belum menemukan lead yang cocok.', fail: 'Belum berhasil saya hapus. Ada masalah saat memperbarui data.' }
+      return null
+    })()
+
+    if (!actionConfig) return false
+
+    const result = actionConfig.resolve()
+    if (result.critical) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          text: [
+            'Ini termasuk aksi kritis.',
+            '',
+            'Saya tidak akan menjalankannya dari chat tanpa konfirmasi eksplisit.',
+            '',
+            'Ketik RESET WORKSPACE jika kamu benar-benar ingin melanjutkan.',
+          ].join('\n'),
+          time: getCurrentTime(),
+        },
+      ])
+      setPendingConfirmation({
+        type: 'critical_unavailable',
+        requiredText: 'RESET WORKSPACE',
+      })
+      return true
+    }
+
+    if (result.notFound) {
+      setMessages((prev) => [...prev, { role: 'ai', text: actionConfig.notFound, time: getCurrentTime() }])
+      return true
+    }
+    if (result.needsClarification) {
+      askActionClarification(actionConfig.type, result.candidates, actionConfig.clarify)
+      return true
+    }
+
+    if (isDestructiveAction(actionConfig.type)) {
+      confirmDestructiveAction(actionConfig.type, result.target)
+      return true
+    }
+
+    try {
+      const response = await executeActionTarget(actionConfig.type, result.target)
+      setMessages((prev) => [...prev, { role: 'ai', text: response, time: getCurrentTime() }])
+    } catch (error) {
+      console.error(`[Nexus Action] ${actionConfig.type} failed:`, error)
+      setMessages((prev) => [...prev, { role: 'ai', text: actionConfig.fail, time: getCurrentTime() }])
+    }
+
+    return true
   }
 
   const handlePendingContentDraft = async (trimmed) => {
@@ -1052,6 +1787,9 @@ export default function JarvisHome({
     const trimmed = text.trim()
     if (!trimmed || isTyping) return
 
+    setIsPinnedToLatest(true)
+    window.requestAnimationFrame(() => scrollToLatest('smooth'))
+
     const userMessage = {
       role: 'user',
       text: trimmed,
@@ -1070,11 +1808,81 @@ export default function JarvisHome({
     try {
       await sleep(getThinkingDelay(trimmed))
 
+      const handledPendingConfirmation = await handlePendingConfirmation(trimmed)
+      if (handledPendingConfirmation) return
+
       const handledPendingContentDraft = await handlePendingContentDraft(trimmed)
       if (handledPendingContentDraft) return
 
       const handledPendingTask = await handlePendingTask(trimmed)
       if (handledPendingTask) return
+
+      const handledPendingAction = await handlePendingAction(trimmed)
+      if (handledPendingAction) return
+
+      if (isConversationIntent(trimmed)) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'ai',
+            text: buildConversationResponse(trimmed),
+            time: getCurrentTime(),
+          },
+        ])
+        return
+      }
+
+      const handledChatAction = await executeChatAction(trimmed)
+      if (handledChatAction) return
+
+      const handledStateCommand = await executeStateCommand(trimmed)
+      if (handledStateCommand) return
+
+      const briefingCommand = getDailyBriefingCommand(trimmed)
+      if (briefingCommand) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'ai',
+            text: buildDailyBriefingCommandResponse(briefingCommand, briefingInputs),
+            time: getCurrentTime(),
+          },
+        ])
+        return
+      }
+
+      const memoryReply = answerFromJarvisMemory(trimmed, memories)
+      if (memoryReply) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'ai',
+            text: memoryReply,
+            time: getCurrentTime(),
+          },
+        ])
+        return
+      }
+
+      const judgment = evaluateJudgment(trimmed, briefingInputs)
+      if (judgment) {
+        if (onAddMemory && isMemoryCaptureRequest(trimmed)) {
+          const continuityDraft = createJarvisMemoryFromText(trimmed)
+          if (['challenge', 'momentum'].includes(continuityDraft?.data?.type)) {
+            await onAddMemory(continuityDraft.key, continuityDraft.value, continuityDraft.type)
+          }
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'ai',
+            text: judgment.response,
+            time: getCurrentTime(),
+          },
+        ])
+        return
+      }
 
       if (isContentDraftRequest(trimmed)) {
         setPendingContentDraft({ prompt: trimmed })
@@ -1111,12 +1919,25 @@ export default function JarvisHome({
       }
 
       if (onAddMemory && isMemoryCaptureRequest(trimmed)) {
-        await onAddMemory(`note_${Date.now()}`, trimmed, 'note')
+        const memoryDraft = createJarvisMemoryFromText(trimmed)
+        if (!memoryDraft) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'ai',
+              text: 'Baik.',
+              time: getCurrentTime(),
+            },
+          ])
+          return
+        }
+
+        await onAddMemory(memoryDraft.key, memoryDraft.value, memoryDraft.type)
         setMessages((prev) => [
           ...prev,
           {
             role: 'ai',
-            text: buildMemorySavedResponse(trimmed),
+            text: buildMemorySavedResponse(memoryDraft),
             time: getCurrentTime(),
           },
         ])
@@ -1238,15 +2059,7 @@ export default function JarvisHome({
           return
         }
 
-        const createdLead = await onAddLead(route.payload)
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'ai',
-            text: buildLeadCreatedResponse(createdLead),
-            time: getCurrentTime(),
-          },
-        ])
+        await executeLeadCreation(trimmed, route.payload)
         return
       }
 
@@ -1360,8 +2173,8 @@ export default function JarvisHome({
         : routedType === 'content'
         ? 'Ide konten belum tersimpan.'
         : error.message === 'Missing VITE_GEMINI_API_KEY'
-        ? 'Nexus AI belum dikonfigurasi. Tambahkan VITE_GEMINI_API_KEY ke file .env, lalu restart dev server.'
-        : `Saya belum bisa menghubungi Nexus AI saat ini. ${error.message || 'Coba lagi sebentar lagi.'}`
+        ? 'Nexus belum dikonfigurasi. Tambahkan VITE_GEMINI_API_KEY ke file .env, lalu restart dev server.'
+        : `Saya belum bisa menghubungi Nexus saat ini. ${error.message || 'Coba lagi sebentar lagi.'}`
 
       setMessages((prev) => [
         ...prev,
@@ -1397,12 +2210,12 @@ export default function JarvisHome({
     const localContent = [...generatedContent, ...contentIdeas]
     const responses = {
       focus: buildFocusTodayReply({ tasks, leads, content: localContent }),
-      important: buildWhatDidIMissReply({ tasks, leads, content: localContent }),
+      important: buildDailyBriefingCommandResponse('missed', briefingInputs),
       leads: buildReviewLeadsReply(leads),
       content: buildCreateContentReply(),
-      summary: buildDailySummaryReply(tasks, leads, localContent),
-      missed: buildWhatDidIMissReply({ tasks, leads, content: localContent }),
-      tomorrow: buildTomorrowPlanReply({ tasks, leads, content: localContent }),
+      summary: buildDailyBriefingCommandResponse('today_summary', briefingInputs),
+      missed: buildDailyBriefingCommandResponse('missed', briefingInputs),
+      tomorrow: buildDailyBriefingCommandResponse('tomorrow_focus', briefingInputs),
     }
 
     if (type === 'content') {
@@ -1462,7 +2275,7 @@ export default function JarvisHome({
 
     try {
       await onToggleTask(topPriority.id, topPriority.status)
-      pushAssistantMessage(`Bagus. Tugas "${topPriority.title}" berhasil diselesaikan.`)
+      pushAssistantMessage(`Tugas "${topPriority.title}" sudah selesai.`)
     } catch {
       pushAssistantMessage('Aksi belum berhasil. Coba lagi sebentar lagi.')
     }
@@ -1524,24 +2337,46 @@ export default function JarvisHome({
 
   return (
     <section className="chat-panel nexus-home">
-      <div className="jarvis-status">
-        <span>
-          <span className="status-dot"></span>
-          NEXUS ACTIVE
-        </span>
-        <span>Memory Active</span>
-      </div>
+      <header className="nexus-command-center">
+        <div className="jarvis-status">
+          <span>
+            <span className="status-dot"></span>
+            NEXUS ACTIVE
+          </span>
+          <span>Memory Active</span>
+        </div>
 
-      <div className="jarvis-greeting">
-        <strong>{buildNexusWelcomeMessage(userProfile, profileCompleted).split('\n')[0]}</strong>
-        <span>{getJarvisPrompt()}</span>
-      </div>
+        <div className="jarvis-greeting">
+          <strong>{buildNexusWelcomeMessage(userProfile, profileCompleted, memories, lastSeenAt).split('\n')[0]}</strong>
+          <span>{getJarvisPrompt()}</span>
+        </div>
+
+        <section className="daily-briefing-section" aria-label="Daily Briefing">
+          {dailyBriefingCards.map((card) => (
+            <button
+              type="button"
+              className="daily-briefing-action-card"
+              key={card.id}
+              onClick={() => sendMessage(card.command)}
+              disabled={isTyping}
+            >
+              <span>{card.title}</span>
+              <strong>{card.value}</strong>
+              <small>{card.detail}</small>
+            </button>
+          ))}
+        </section>
+      </header>
 
       <JarvisChat
         messages={messages}
         isThinking={isThinking}
         thinkingText={thinkingText}
         scrollRef={scrollRef}
+        messagesEndRef={messagesEndRef}
+        onScroll={handleChatScroll}
+        showLatestButton={!isPinnedToLatest}
+        onScrollToLatest={() => scrollToLatest('smooth')}
         getCurrentTime={getCurrentTime}
         onQuickAction={sendMessage}
       />
@@ -1551,7 +2386,7 @@ export default function JarvisHome({
       <form className="chat-input-row fixed-chat-input" onSubmit={handleSubmit}>
         <input
           type="text"
-          placeholder="Ngobrol dengan Jarvis..."
+          placeholder="Ngobrol dengan Nexus..."
           value={input}
           disabled={isTyping}
           onChange={(e) => setInput(e.target.value)}

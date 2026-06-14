@@ -102,11 +102,11 @@ export function generateWeeklyReview({
     momentumScore,
     momentumLabel,
     weeklySummary: [
-      `✅ Completed: ${completedTasks} tasks`,
-      `⏳ Pending: ${pendingTasks} tasks`,
-      `👤 Leads followed up: ${leadsFollowedUp}`,
-      `📝 Content created: ${contentCreated}`,
-      `🔥 Momentum: ${momentumLabel}`,
+      `Completed: ${completedTasks} tasks`,
+      `Pending: ${pendingTasks} tasks`,
+      `Leads followed up: ${leadsFollowedUp}`,
+      `Content created: ${contentCreated}`,
+      `Momentum: ${momentumLabel}`,
     ],
     nextWeekRecommendation,
     remindersCount: reminders.length,
@@ -115,7 +115,7 @@ export function generateWeeklyReview({
 
 export function buildWeeklyReviewResponse(review) {
   return [
-    '✅ Review minggu ini dibuat.',
+    'Review minggu ini siap.',
     '',
     'Momentum:',
     `${review.momentumScore}% — ${review.momentumLabel}`,

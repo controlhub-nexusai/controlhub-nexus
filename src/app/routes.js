@@ -7,7 +7,7 @@ export const ROUTES = {
 }
 
 export const PRIMARY_NAV_ITEMS = [
-  { id: ROUTES.JARVIS, label: 'Jarvis', icon: '✦' },
+  { id: ROUTES.JARVIS, label: 'Nexus', icon: '✦' },
   { id: ROUTES.TASKS, label: 'Tasks', icon: '✓' },
   { id: ROUTES.LEADS, label: 'Leads', icon: '◎' },
   { id: ROUTES.CONTENT, label: 'Content', icon: '✎' },

@@ -6,13 +6,17 @@ export default function JarvisChat({
   isThinking,
   thinkingText,
   scrollRef,
+  messagesEndRef,
+  onScroll,
+  showLatestButton,
+  onScrollToLatest,
   getCurrentTime,
   onQuickAction,
 }) {
   return (
     <div className="nexus-console compact-chat-log">
-      <div className="chat-section-title">Jarvis</div>
-      <div className="chat-messages" ref={scrollRef}>
+      <div className="chat-section-title">Nexus</div>
+      <div className="chat-messages" ref={scrollRef} onScroll={onScroll}>
         {messages.map((message, index) => (
           <JarvisMessage
             key={`${message.role}-${message.time || 'message'}-${index}`}
@@ -26,7 +30,7 @@ export default function JarvisChat({
           <div className="bubble-row ai">
             <div className="nexus-avatar">✦</div>
             <div className="bubble ai">
-              <span className="bubble-label">JARVIS<small>sedang mengetik</small></span>
+              <span className="bubble-label">NEXUS<small>sedang mengetik</small></span>
               {thinkingText}
               <div className="typing-dots">
                 <span></span>
@@ -36,7 +40,15 @@ export default function JarvisChat({
             </div>
           </div>
         )}
+
+        <div ref={messagesEndRef} className="messages-end-anchor" aria-hidden="true" />
       </div>
+
+      {showLatestButton && (
+        <button type="button" className="latest-message-btn" onClick={onScrollToLatest}>
+          ↓ Pesan Terbaru
+        </button>
+      )}
     </div>
   )
 }

@@ -37,10 +37,10 @@ const DEFAULT_MEETINGS = [
 const DEFAULT_PROJECTS = [
   {
     id: 'project-nexus',
-    name: 'Nexus AI',
-    status: 'Phase 11.3',
+    name: 'ControlHub Nexus AI',
+    status: 'Nexus Soul V2',
     deadline: '',
-    summary: 'Chief of Staff AI memory layer in progress. Completed dashboard and command center. Pending calendar and email integrations.',
+    summary: 'Nexus is the AI Partner for Zal, built to protect focus, reduce repetitive work, strengthen AI branding, and grow ControlHub Nexus AI.',
   },
 ]
 

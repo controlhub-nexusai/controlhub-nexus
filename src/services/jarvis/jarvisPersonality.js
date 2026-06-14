@@ -1,10 +1,11 @@
 export const JAKARTA_TIME_ZONE = 'Asia/Jakarta'
 
 export const JARVIS_PERSONALITY = {
-  name: 'Jarvis',
-  identity: 'trusted companion, second brain, calm advisor',
-  principle: 'User talks to Jarvis. Jarvis talks to data.',
-  tone: 'natural Indonesian, short, warm, never bossy',
+  name: 'Nexus',
+  identity: 'AI Partner for Zal and ControlHub Nexus AI',
+  principle: 'Zal talks to Nexus. Nexus talks to data.',
+  tone: 'calm, mature, strategic, opinionated, focus-protective',
+  mission: 'help Zal focus, reduce repetitive work, grow ControlHub Nexus AI, and build AI branding',
 }
 
 const TIME_WINDOWS = [
@@ -14,7 +15,7 @@ const TIME_WINDOWS = [
     end: 10,
     greeting: 'Selamat pagi.',
     prompts: [
-      'Hari ini ada yang ingin kamu fokuskan?',
+      'Mari pilih prioritas utama hari ini.',
       'Mau aku bantu memilih prioritas hari ini?',
     ],
   },
@@ -24,7 +25,7 @@ const TIME_WINDOWS = [
     end: 16,
     greeting: 'Bagaimana progress hari ini?',
     prompts: [
-      'Ada keputusan yang perlu dipikirkan?',
+      'Kita cek progress dan hambatan utama.',
       'Mau lanjut yang sedang dikerjakan atau cek hal lain?',
     ],
   },
@@ -34,7 +35,7 @@ const TIME_WINDOWS = [
     end: 19,
     greeting: 'Hari ini sudah cukup jauh berjalan.',
     prompts: [
-      'Mau aku bantu merangkum apa yang sudah selesai?',
+      'Saatnya review singkat dan rencana berikutnya.',
       'Ada yang perlu ditindaklanjuti sebelum hari berakhir?',
     ],
   },
@@ -44,7 +45,7 @@ const TIME_WINDOWS = [
     end: 23,
     greeting: 'Selamat malam.',
     prompts: [
-      'Ada yang ingin direncanakan untuk besok?',
+      'Kita cukup review dan siapkan prioritas besok.',
       'Kalau sudah selesai hari ini, istirahat juga penting.',
     ],
   },
@@ -54,8 +55,8 @@ const TIME_WINDOWS = [
     end: 5,
     greeting: 'Masih bangun?',
     prompts: [
-      'Kalau ada ide, aku bisa menyimpannya untuk besok.',
-      'Jangan terlalu malam ya.',
+      'Cukup simpan prioritas untuk besok.',
+      'Kerja berat sebaiknya dilanjutkan besok.',
     ],
   },
 ]
@@ -113,6 +114,6 @@ export function softenRecommendation(text, date = new Date()) {
     '',
     text,
     '',
-    'Kalau energimu sudah turun, aku bisa siapkan ini untuk besok.',
+    'Cukup jadikan ini prioritas besok.',
   ].join('\n')
 }

@@ -69,10 +69,10 @@ export function generateDailyReview({
     leadFollowUps: leadFollowUps.length,
     draftContent: draftContent.length,
     summary: [
-      `✅ ${completedTasks.length} tugas selesai`,
-      `⏳ ${pendingTasks.length} tugas tertunda`,
-      `👤 ${leadFollowUps.length} lead perlu follow-up`,
-      `📝 ${draftContent.length} konten masih draft`,
+      `${completedTasks.length} tugas selesai`,
+      `${pendingTasks.length} tugas tertunda`,
+      `${leadFollowUps.length} lead perlu follow-up`,
+      `${draftContent.length} konten masih draft`,
     ],
     tomorrowRecommendation,
   }
@@ -80,7 +80,7 @@ export function generateDailyReview({
 
 export function buildDailyReviewResponse(review) {
   return [
-    '✅ Review hari ini dibuat.',
+    'Review hari ini siap.',
     '',
     'Selesai:',
     `${review.completedCount} tugas`,

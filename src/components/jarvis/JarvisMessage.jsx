@@ -6,7 +6,7 @@ export default function JarvisMessage({ message, getCurrentTime, onQuickAction }
       {message.role === 'ai' && <div className="nexus-avatar">✦</div>}
       <div className={`bubble ${message.role}`}>
         <span className="bubble-label">
-          {message.role === 'ai' ? 'JARVIS' : 'YOU'}
+          {message.role === 'ai' ? 'NEXUS' : 'YOU'}
           <small>{message.time || getCurrentTime()}</small>
         </span>
         {message.text}
