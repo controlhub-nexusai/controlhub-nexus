@@ -2,7 +2,6 @@ import React from 'react'
 
 const QUICK_REPLIES = [
   { id: 'focus', label: 'Fokus hari ini' },
-  { id: 'important', label: 'Ada yang penting?' },
   { id: 'leads', label: 'Cek prospek' },
   { id: 'content', label: 'Buat konten' },
   { id: 'summary', label: 'Ringkas hari ini' },
